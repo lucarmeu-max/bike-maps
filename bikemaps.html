@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bike Maps</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #05070b; }
+  #root { min-height: 100vh; }
+  #bm-fallback {
+    display: block; color: #eaf0f6; font-family: 'Segoe UI', sans-serif; padding: 60px 24px;
+    text-align: center; font-size: 15px; line-height: 1.6; max-width: 640px; margin: 0 auto;
+  }
+  #bm-fallback code { background: #14202f; padding: 2px 8px; border-radius: 6px; color: #00e6a8; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="bm-fallback">Carregando Bike Maps…</div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js" crossorigin></script>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var fb = document.getElementById("bm-fallback");
+    fb.style.display = "block";
+    fb.innerHTML = "Não consegui carregar a página.<br><br>Erro: <code>" +
+      (e.message || "erro desconhecido") + "</code><br><br>" +
+      "Verifique sua conexão com a internet (esta página carrega React de um CDN) " +
+      "e tente novamente. Se o erro persistir, abra o Console do navegador (F12) e me envie a mensagem completa.";
+  });
+  setTimeout(function () {
+    if (!window.__bmMounted) {
+      var fb = document.getElementById("bm-fallback");
+      fb.innerHTML = "A página está demorando para carregar.<br><br>" +
+        "Isso geralmente significa que os scripts do CDN (React/Babel) não conseguiram carregar — " +
+        "verifique sua conexão com a internet, ou se algum bloqueador de conteúdo/firewall está " +
+        "impedindo o acesso a <code>unpkg.com</code>.<br><br>Abra o Console (F12) para mais detalhes.";
+    }
+  }, 6000);
+</script>
+
+<script type="text/babel" data-presets="react">
+try {
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ---- local icon set (no external dependency) ---- */
+function Ic({ size = 16, color = "currentColor", strokeWidth = 2, style, children }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+      {children}
+    </svg>
+  );
+}
+const Bike = (p) => <Ic {...p}><circle cx="6" cy="17" r="3.5" /><circle cx="18" cy="17" r="3.5" /><path d="M6 17 9 10h5l3.5 7M9 10 7.5 6H11" /></Ic>;
+const MapPin = (p) => <Ic {...p}><path d="M12 21s7-6.5 7-11a7 7 0 1 0-14 0c0 4.5 7 11 7 11z" /><circle cx="12" cy="10" r="2.3" /></Ic>;
+const Zap = (p) => <Ic {...p}><polygon points="13 2 5 14 11 14 10 22 19 10 13 10 13 2" fill={p.color || "currentColor"} stroke="none" /></Ic>;
+const TrendingUp = (p) => <Ic {...p}><polyline points="3 17 9 11 13 15 21 5" /><polyline points="15 5 21 5 21 11" /></Ic>;
+const Trophy = (p) => <Ic {...p}><rect x="7" y="4" width="10" height="7" rx="2" /><path d="M7 6H4a1 1 0 0 0-1 1c0 3 2 5 4 5" /><path d="M17 6h3a1 1 0 0 1 1 1c0 3-2 5-4 5" /><line x1="9" y1="17" x2="9" y2="20" /><line x1="15" y1="17" x2="15" y2="20" /><line x1="8" y1="21" x2="16" y2="21" /></Ic>;
+const Users = (p) => <Ic {...p}><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><circle cx="17" cy="9" r="2.4" /><path d="M16 14.5c2.5.3 4 2.2 4 5.5" /></Ic>;
+const Navigation = (p) => <Ic {...p}><polygon points="12 2 19 21 12 17 5 21" /></Ic>;
+const Battery = (p) => <Ic {...p}><rect x="2" y="7" width="18" height="10" rx="2" /><line x1="22" y1="11" x2="22" y2="13" /></Ic>;
+const Wifi = (p) => <Ic {...p}><path d="M2 8.5a16 16 0 0 1 20 0" /><path d="M5 12a11 11 0 0 1 14 0" /><path d="M8.5 15.5a6 6 0 0 1 7 0" /><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" /></Ic>;
+const Signal = (p) => <Ic {...p}><line x1="4" y1="20" x2="4" y2="14" /><line x1="9" y1="20" x2="9" y2="10" /><line x1="14" y1="20" x2="14" y2="6" /><line x1="19" y1="20" x2="19" y2="3" /></Ic>;
+const Thermometer = (p) => <Ic {...p}><path d="M12 2a2 2 0 0 0-2 2v9.5a4 4 0 1 0 4 0V4a2 2 0 0 0-2-2z" /><line x1="12" y1="7" x2="12" y2="13" /></Ic>;
+const Wind = (p) => <Ic {...p}><path d="M3 8h11a3 3 0 1 0-3-3" /><path d="M3 12h15a3 3 0 1 1-3 3" /><path d="M3 16h8a2 2 0 1 1-2 2" /></Ic>;
+const Clock = (p) => <Ic {...p}><circle cx="12" cy="12" r="9" /><line x1="12" y1="12" x2="12" y2="7" /><line x1="12" y1="12" x2="16" y2="14" /></Ic>;
+const Flame = (p) => <Ic {...p}><path d="M12 22c4 0 6-3 6-6.5C18 11 12 2 12 2S6 11 6 15.5C6 19 8 22 12 22z" /><path d="M12 18a2.5 2.5 0 0 0 0-6c-.6 1-1 1.6-1 2.6a2 2 0 0 0 1 3.4z" /></Ic>;
+const Mountain = (p) => <Ic {...p}><path d="M3 20 9 8l4 6 3-4 5 10z" /></Ic>;
+const Gauge = (p) => <Ic {...p}><circle cx="12" cy="13" r="8" /><line x1="12" y1="13" x2="16" y2="9" /><circle cx="12" cy="13" r="1.3" fill="currentColor" stroke="none" /></Ic>;
+const ChevronRight = (p) => <Ic {...p}><polyline points="9 6 15 12 9 18" /></Ic>;
+const Play = (p) => <Ic {...p}><polygon points="6 3 20 12 6 21" fill={p.color || "currentColor"} stroke="none" /></Ic>;
+const Heart = (p) => <Ic {...p}><path d="M12 21s-7-4.35-9.5-8.5C.8 8.2 2.3 4.2 6.2 4.2c2 0 3.6 1.1 5.8 3.4 2.2-2.3 3.8-3.4 5.8-3.4 3.9 0 5.4 4 3.7 8.3C19 16.65 12 21 12 21z" /></Ic>;
+const MessageCircle = (p) => <Ic {...p}><path d="M21 11.5A8.5 8.5 0 0 1 12.5 20c-1.4 0-2.7-.3-3.9-.9L4 21l1.4-4.2A8.4 8.4 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z" /></Ic>;
+const Share2 = (p) => <Ic {...p}><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="6" r="2.5" /><circle cx="18" cy="18" r="2.5" /><line x1="8.2" y1="10.8" x2="15.8" y2="7.2" /><line x1="8.2" y1="13.2" x2="15.8" y2="16.8" /></Ic>;
+const Lock = (p) => <Ic {...p}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 1 1 8 0v4" /></Ic>;
+const ArrowUpRight = (p) => <Ic {...p}><line x1="7" y1="17" x2="17" y2="7" /><polyline points="8 7 17 7 17 16" /></Ic>;
+const Radio = (p) => <Ic {...p}><circle cx="12" cy="12" r="2.3" /><path d="M8.5 8.5a5 5 0 0 0 0 7" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M5.5 5.5a9.5 9.5 0 0 0 0 13" /><path d="M18.5 5.5a9.5 9.5 0 0 1 0 13" /></Ic>;
+const Target = (p) => <Ic {...p}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" /></Ic>;
+const Award = (p) => <Ic {...p}><circle cx="12" cy="8" r="6" /><path d="M9 13.5 7 22l5-3 5 3-2-8.5" /></Ic>;
+const Compass = (p) => <Ic {...p}><circle cx="12" cy="12" r="9" /><polygon points="15 9 13 13 9 15 11 11 15 9" fill={p.color || "currentColor"} stroke="none" /></Ic>;
+const Satellite = (p) => <Ic {...p}><rect x="9" y="9" width="6" height="6" rx="1" transform="rotate(-45 12 12)" /><line x1="2" y1="7" x2="7" y2="2" /><line x1="17" y1="22" x2="22" y2="17" /><path d="M12 5a7 7 0 0 1 7 7" /></Ic>;
+const CheckCircle2 = (p) => <Ic {...p}><circle cx="12" cy="12" r="9" /><polyline points="8 12 11 15 16 9" /></Ic>;
+
+
+/* =========================================================================
+   BIKE MAPS — "unbelievable" pass
+   Signature idea: one continuous route line is the spine of the entire page.
+   It starts in the hero, threads behind every section, and a glowing rider
+   travels along it as the page is scrolled — turning scroll position itself
+   into "distance ridden". Everything else (boot sequence, parallax canvas,
+   comet cursor, magnetic buttons, tilt cards, odometer counters) reinforces
+   that one idea instead of competing with it.
+   ========================================================================= */
+
+const FONTS_HREF =
+  "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap";
+
+const MINT = "#00e6a8";
+const VIOLET = "#7c6cff";
+const AMBER = "#ff8a4c";
+
+/* ---------------- shared hooks ---------------- */
+
+function useReveal(threshold = 0.15) {
+  const ref = useRef(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach((e) => e.isIntersecting && setShown(true)),
+      { threshold }
+    );
+    if (el) obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+  return [ref, shown];
+}
+
+function useOdometer(target, { decimals = 0, duration = 1500 } = {}) {
+  const [value, setValue] = useState(0);
+  const ref = useRef(null);
+  const done = useRef(false);
+  useEffect(() => {
+    const el = ref.current;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting && !done.current) {
+            done.current = true;
+            const start = performance.now();
+            const tick = (now) => {
+              const p = Math.min(1, (now - start) / duration);
+              const eased = 1 - Math.pow(1 - p, 4);
+              setValue(target * eased);
+              if (p < 1) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          }
+        });
+      },
+      { threshold: 0.4 }
+    );
+    if (el) obs.observe(el);
+    return () => obs.disconnect();
+  }, [target, duration]);
+  return [value.toFixed(decimals), ref];
+}
+
+/* scroll progress 0..1 across the whole document */
+function useScrollProgress() {
+  const [p, setP] = useState(0);
+  useEffect(() => {
+    let raf = null;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        const h = document.documentElement.scrollHeight - window.innerHeight;
+        setP(h > 0 ? Math.min(1, Math.max(0, window.scrollY / h)) : 0);
+        raf = null;
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  return p;
+}
+
+function useMouseParallax() {
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    const onMove = (e) => {
+      setPos({
+        x: (e.clientX / window.innerWidth) * 2 - 1,
+        y: (e.clientY / window.innerHeight) * 2 - 1,
+      });
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+  return pos;
+}
+
+function App() {
+  const [booted, setBooted] = useState(false);
+  return (
+    <div className="bm-root">
+      <FontLoader />
+      <GlobalStyles />
+      {!booted && <BootSequence onDone={() => setBooted(true)} />}
+      <div className={`bm-app ${booted ? "in" : ""}`}>
+        <CursorComet />
+        <NoiseOverlay />
+        <MicroBadges />
+        <MasterRoute />
+        <Nav />
+        <Hero />
+        <LiveTicker />
+        <MapSection />
+        <DashboardSection />
+        <ProfileSection />
+        <AchievementsSection />
+        <CommunitySection />
+        <StoreSection />
+        <SosCta />
+        <Footer />
+        <MobileNav />
+      </div>
+    </div>
+  );
+}
+
+function FontLoader() {
+  useEffect(() => {
+    if (document.getElementById("bm-fonts")) return;
+    const link = document.createElement("link");
+    link.id = "bm-fonts";
+    link.rel = "stylesheet";
+    link.href = FONTS_HREF;
+    document.head.appendChild(link);
+  }, []);
+  return null;
+}
+
+/* ---------------- boot sequence ---------------- */
+
+function BootSequence({ onDone }) {
+  const [lines, setLines] = useState([]);
+  const [pct, setPct] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const steps = useMemo(
+    () => [
+      "INICIANDO BIKE MAPS OS v2.0.4",
+      "PROCURANDO SATÉLITES ▸ GPS",
+      "LAT -15.7801  LON -47.9292",
+      "SINCRONIZANDO MAPA LOCAL",
+      "CARREGANDO PERFIL DO CICLISTA",
+      "CONEXÃO ESTÁVEL ▸ PRONTO",
+    ],
+    []
+  );
+  useEffect(() => {
+    let i = 0;
+    const interval = setInterval(() => {
+      i += 1;
+      setLines((prev) => [...prev, steps[i - 1]]);
+      setPct(Math.round((i / steps.length) * 100));
+      if (i >= steps.length) {
+        clearInterval(interval);
+        setTimeout(() => setLeaving(true), 260);
+        setTimeout(() => onDone(), 760);
+      }
+    }, 210);
+    return () => clearInterval(interval);
+  }, [steps, onDone]);
+
+  return (
+    <div className={`bm-boot ${leaving ? "leave" : ""}`}>
+      <div className="bm-boot-inner">
+        <div className="bm-boot-mark">
+          <Satellite size={20} color={MINT} />
+        </div>
+        <div className="bm-boot-log bm-mono">
+          {lines.map((l, i) => (
+            <div key={i} className="bm-boot-line">
+              <span className="ok">✓</span> {l}
+            </div>
+          ))}
+        </div>
+        <div className="bm-boot-bar-track">
+          <div className="bm-boot-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="bm-boot-pct bm-mono">{pct}%</div>
+      </div>
+      <div className="bm-boot-grid" />
+    </div>
+  );
+}
+
+/* ---------------- comet cursor ---------------- */
+
+function CursorComet() {
+  const dotsRef = useRef([]);
+  const pos = useRef(Array.from({ length: 6 }, () => ({ x: 0, y: 0 })));
+  const target = useRef({ x: 0, y: 0 });
+  const bigRef = useRef(false);
+
+  useEffect(() => {
+    const move = (e) => { target.current = { x: e.clientX, y: e.clientY }; };
+    const over = (e) => {
+      if (e.target.closest("button, a, .bm-route-card, .bm-medal, .bm-feed-action, .bm-map-ctrl-btn, .bm-tilt")) {
+        bigRef.current = true;
+      }
+    };
+    const out = (e) => {
+      if (e.target.closest("button, a, .bm-route-card, .bm-medal, .bm-feed-action, .bm-map-ctrl-btn, .bm-tilt")) {
+        bigRef.current = false;
+      }
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseover", over);
+    window.addEventListener("mouseout", out);
+
+    let raf;
+    const tick = () => {
+      let px = target.current.x, py = target.current.y;
+      pos.current.forEach((p, i) => {
+        const ease = i === 0 ? 0.32 : 0.32 - i * 0.02;
+        p.x += (px - p.x) * Math.max(ease, 0.12);
+        p.y += (py - p.y) * Math.max(ease, 0.12);
+        px = p.x; py = p.y;
+        const el = dotsRef.current[i];
+        if (el) {
+          const scale = bigRef.current ? 1.8 - i * 0.15 : 1 - i * 0.1;
+          el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%,-50%) scale(${Math.max(scale, 0.2)})`;
+          el.style.opacity = String(1 - i * 0.15);
+        }
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseover", over);
+      window.removeEventListener("mouseout", out);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return (
+    <div className="bm-comet-wrap">
+      {pos.current.map((_, i) => (
+        <div
+          key={i}
+          ref={(el) => (dotsRef.current[i] = el)}
+          className={`bm-comet-dot ${i === 0 ? "lead" : ""}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function NoiseOverlay() {
+  return <div className="bm-noise" />;
+}
+
+function MicroBadges() {
+  return (
+    <div className="bm-micro-badge bm-mono">
+      <div className="bm-micro-chip"><span className="live-dot" /> GPS conectado</div>
+      <div className="bm-micro-chip"><Thermometer size={11} /> 24°C</div>
+      <div className="bm-micro-chip"><Battery size={11} /> 82%</div>
+    </div>
+  );
+}
+
+/* ---------------- master route spine ---------------- */
+/* The single line that runs the full height of the page. Its reveal and the
+   rider's position are both driven by scroll progress — scrolling *is* riding. */
+
+function MasterRoute() {
+  const progress = useScrollProgress();
+  const [docHeight, setDocHeight] = useState(2000);
+  const pathRef = useRef(null);
+  const [length, setLength] = useState(0);
+
+  useEffect(() => {
+    const measure = () => setDocHeight(document.documentElement.scrollHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(document.body);
+    window.addEventListener("resize", measure);
+    const t = setInterval(measure, 800);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); clearInterval(t); };
+  }, []);
+
+  useEffect(() => {
+    if (pathRef.current) setLength(pathRef.current.getTotalLength());
+  }, [docHeight]);
+
+  const d = useMemo(() => {
+    const h = docHeight;
+    const xs = [640, 120, 1080, 200, 960, 300, 640];
+    const n = xs.length - 1;
+    let path = `M ${xs[0]},0 `;
+    for (let i = 0; i < n; i++) {
+      const y1 = (h * (i + 0.5)) / n;
+      const y2 = (h * (i + 1)) / n;
+      path += `C ${xs[i]},${y1} ${xs[i + 1]},${y1} ${xs[i + 1]},${y2} `;
+    }
+    return path;
+  }, [docHeight]);
+
+  let point = { x: 640, y: 0 };
+  let lean = 0;
+  if (pathRef.current && length) {
+    point = pathRef.current.getPointAtLength(length * progress);
+    const ahead = pathRef.current.getPointAtLength(Math.min(length, length * progress + 30));
+    const dx = ahead.x - point.x, dy = ahead.y - point.y || 1;
+    lean = Math.max(-18, Math.min(18, Math.atan2(dx, dy) * (180 / Math.PI)));
+  }
+  const km = (progress * 42.0).toFixed(1);
+  const spin = (progress * 3600) % 360;
+
+  return (
+    <div className="bm-master-route" style={{ height: docHeight }}>
+      <svg width="100%" height={docHeight} viewBox={`0 0 1200 ${docHeight}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="spineFade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={MINT} stopOpacity="0.9" />
+            <stop offset="100%" stopColor={VIOLET} stopOpacity="0.9" />
+          </linearGradient>
+        </defs>
+        <path d={d} fill="none" stroke="#172438" strokeWidth="2" />
+        <path
+          ref={pathRef}
+          d={d}
+          fill="none"
+          stroke="url(#spineFade)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeDasharray={length || 1}
+          strokeDashoffset={length ? length * (1 - progress) : 0}
+          style={{ filter: "drop-shadow(0 0 8px rgba(0,230,168,0.55))" }}
+        />
+      </svg>
+      <div
+        className="bm-rider-marker"
+        style={{ transform: `translate(${(point.x / 1200) * 100}vw, ${point.y}px) translate(-50%,-50%)` }}
+      >
+        <div className="bm-rider-pulse" />
+        <div className="bm-rider-bob">
+          <BikeGraphic spin={spin} lean={lean} size={64} />
+        </div>
+        <div className="bm-rider-tag bm-mono">{km} KM</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- bicycle graphic (detailed, wheels + crank spin with scroll) ---------------- */
+
+function bikeSpokes(cx, cy, rInner, rOuter, count) {
+  const lines = [];
+  for (let i = 0; i < count; i++) {
+    const a = (i * (Math.PI * 2)) / count;
+    const x1 = cx + Math.cos(a) * rInner, y1 = cy + Math.sin(a) * rInner;
+    const x2 = cx + Math.cos(a) * rOuter, y2 = cy + Math.sin(a) * rOuter;
+    lines.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={MINT} strokeWidth="1" opacity="0.55" />);
+  }
+  return lines;
+}
+
+function BikeGraphic({ spin = 0, lean = 0, size = 64, glow = true }) {
+  const REAR = { x: 56, y: 104 }, FRONT = { x: 184, y: 104 }, BB = { x: 118, y: 104 };
+  const SEAT_TOP = { x: 96, y: 44 }, HEAD_TOP = { x: 166, y: 52 }, HEAD_BOT = { x: 172, y: 68 };
+  const h = size * (150 / 240);
+  return (
+    <svg
+      width={size} height={h} viewBox="0 0 240 150"
+      style={{ transform: `rotate(${lean}deg)`, transition: "transform .35s ease-out", overflow: "visible" }}
+    >
+      <defs>
+        <linearGradient id="bikeFrameGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={MINT} />
+          <stop offset="100%" stopColor="#00a97a" />
+        </linearGradient>
+        {glow && (
+          <filter id="bikeGlow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="2.4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        )}
+      </defs>
+
+      <g filter={glow ? "url(#bikeGlow)" : undefined}>
+        {/* ground shadow */}
+        <ellipse cx="120" cy="146" rx="100" ry="6" fill={MINT} opacity="0.08" />
+
+        {/* frame — rear triangle + front triangle */}
+        <g stroke="url(#bikeFrameGrad)" strokeWidth="4" strokeLinecap="round" fill="none">
+          <line x1={REAR.x} y1={REAR.y} x2={BB.x} y2={BB.y} />
+          <line x1={BB.x} y1={BB.y} x2={SEAT_TOP.x} y2={SEAT_TOP.y} />
+          <line x1={REAR.x} y1={REAR.y} x2={SEAT_TOP.x} y2={SEAT_TOP.y} strokeWidth="3" />
+          <line x1={SEAT_TOP.x} y1={SEAT_TOP.y} x2={HEAD_TOP.x} y2={HEAD_TOP.y} />
+          <line x1={BB.x} y1={BB.y} x2={HEAD_BOT.x} y2={HEAD_BOT.y} />
+          <line x1={HEAD_TOP.x} y1={HEAD_TOP.y} x2={HEAD_BOT.x} y2={HEAD_BOT.y} strokeWidth="5" />
+          <path d={`M ${HEAD_BOT.x},${HEAD_BOT.y} Q ${HEAD_BOT.x + 6},${(HEAD_BOT.y + FRONT.y) / 2} ${FRONT.x},${FRONT.y}`} strokeWidth="4" />
+        </g>
+
+        {/* seat */}
+        <path d={`M ${SEAT_TOP.x - 15},${SEAT_TOP.y - 6} Q ${SEAT_TOP.x + 4},${SEAT_TOP.y - 11} ${SEAT_TOP.x + 15},${SEAT_TOP.y - 5}`} stroke={MINT} strokeWidth="4" strokeLinecap="round" fill="none" />
+        <line x1={SEAT_TOP.x} y1={SEAT_TOP.y} x2={SEAT_TOP.x + 1} y2={SEAT_TOP.y - 5} stroke={MINT} strokeWidth="3" />
+
+        {/* handlebar */}
+        <line x1={HEAD_TOP.x} y1={HEAD_TOP.y} x2={HEAD_TOP.x - 8} y2={HEAD_TOP.y - 16} stroke={MINT} strokeWidth="3.5" strokeLinecap="round" />
+        <path d={`M ${HEAD_TOP.x - 30},${HEAD_TOP.y - 18} L ${HEAD_TOP.x + 4},${HEAD_TOP.y - 18} Q ${HEAD_TOP.x + 10},${HEAD_TOP.y - 18} ${HEAD_TOP.x + 10},${HEAD_TOP.y - 10}`} stroke={MINT} strokeWidth="3.5" strokeLinecap="round" fill="none" />
+        <path d={`M ${HEAD_TOP.x - 30},${HEAD_TOP.y - 18} Q ${HEAD_TOP.x - 36},${HEAD_TOP.y - 18} ${HEAD_TOP.x - 36},${HEAD_TOP.y - 10}`} stroke={MINT} strokeWidth="3.5" strokeLinecap="round" fill="none" />
+
+        {/* chain (stylized tangent lines between chainring and rear cog) */}
+        <line x1={BB.x - 15} y1={BB.y - 9} x2={REAR.x + 9} y2={REAR.y - 6} stroke={MINT} strokeWidth="1.6" opacity="0.7" />
+        <line x1={BB.x - 15} y1={BB.y + 9} x2={REAR.x + 9} y2={REAR.y + 6} stroke={MINT} strokeWidth="1.6" opacity="0.7" />
+
+        {/* crank + pedals — rotates with spin */}
+        <g style={{ transform: `rotate(${spin}deg)`, transformOrigin: `${BB.x}px ${BB.y}px` }}>
+          <line x1={BB.x} y1={BB.y} x2={BB.x - 22} y2={BB.y} stroke={MINT} strokeWidth="3.4" strokeLinecap="round" />
+          <line x1={BB.x} y1={BB.y} x2={BB.x + 22} y2={BB.y} stroke={MINT} strokeWidth="3.4" strokeLinecap="round" />
+          <rect x={BB.x - 27} y={BB.y - 4} width="10" height="8" rx="2" fill={MINT} />
+          <rect x={BB.x + 17} y={BB.y - 4} width="10" height="8" rx="2" fill={MINT} />
+        </g>
+        <circle cx={BB.x} cy={BB.y} r="16" fill="none" stroke={MINT} strokeWidth="2" opacity="0.85" />
+        <circle cx={REAR.x} cy={REAR.y} r="9" fill="none" stroke={MINT} strokeWidth="1.6" opacity="0.85" />
+
+        {/* wheels — tire + rim + spokes + hub, rotate with spin */}
+        {[REAR, FRONT].map((hub, wi) => (
+          <g key={wi} style={{ transform: `rotate(${spin}deg)`, transformOrigin: `${hub.x}px ${hub.y}px` }}>
+            <circle cx={hub.x} cy={hub.y} r="42" fill="none" stroke={MINT} strokeWidth="5" opacity="0.9" />
+            <circle cx={hub.x} cy={hub.y} r="36" fill="none" stroke={MINT} strokeWidth="1.4" opacity="0.5" />
+            {bikeSpokes(hub.x, hub.y, 7, 36, 18)}
+            <circle cx={hub.x} cy={hub.y} r="6" fill={MINT} />
+          </g>
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+
+/* ---------------- magnetic button ---------------- */
+
+function Magnetic({ children, className, ...rest }) {
+  const ref = useRef(null);
+  const onMove = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = e.clientX - r.left - r.width / 2;
+    const y = e.clientY - r.top - r.height / 2;
+    el.style.transform = `translate(${x * 0.28}px, ${y * 0.35}px)`;
+  };
+  const onLeave = () => {
+    if (ref.current) ref.current.style.transform = "translate(0,0)";
+  };
+  return (
+    <button ref={ref} className={`bm-magnetic ${className || ""}`} onMouseMove={onMove} onMouseLeave={onLeave} {...rest}>
+      <span>{children}</span>
+    </button>
+  );
+}
+
+/* ---------------- 3d tilt wrapper ---------------- */
+
+function Tilt({ children, className, style, max = 10 }) {
+  const ref = useRef(null);
+  const onMove = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `perspective(700px) rotateX(${-py * max}deg) rotateY(${px * max}deg) translateZ(6px)`;
+  };
+  const onLeave = () => {
+    if (ref.current) ref.current.style.transform = "perspective(700px) rotateX(0) rotateY(0) translateZ(0)";
+  };
+  return (
+    <div ref={ref} className={`bm-tilt ${className || ""}`} style={style} onMouseMove={onMove} onMouseLeave={onLeave}>
+      {children}
+    </div>
+  );
+}
+
+/* ---------------- perspective canvas background ---------------- */
+
+function PerspectiveCanvas() {
+  const canvasRef = useRef(null);
+  const mouse = useMouseParallax();
+  const mouseRef = useRef(mouse);
+  mouseRef.current = mouse;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    let raf, w, h, dpr;
+    const particles = Array.from({ length: 70 }, () => ({
+      x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2,
+      vx: (Math.random() - 0.5) * 0.0004, vy: (Math.random() - 0.5) * 0.0004,
+    }));
+
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = canvas.clientWidth; h = canvas.clientHeight;
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    let t = 0;
+    const draw = () => {
+      t += 1;
+      ctx.clearRect(0, 0, w, h);
+      const mx = mouseRef.current.x, my = mouseRef.current.y;
+
+      // perspective grid: horizon lines converging toward vanishing point
+      const vpX = w / 2 + mx * 30;
+      const vpY = h * 0.42 + my * 14;
+      ctx.save();
+      ctx.strokeStyle = "rgba(0,230,168,0.10)";
+      ctx.lineWidth = 1;
+      const rows = 14;
+      for (let i = 1; i <= rows; i++) {
+        const f = i / rows;
+        const y = vpY + (h - vpY) * Math.pow(f, 1.6);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.globalAlpha = 0.5 * (1 - f) + 0.05;
+        ctx.stroke();
+      }
+      const cols = 16;
+      for (let i = 0; i <= cols; i++) {
+        const fx = i / cols;
+        const xBottom = fx * w;
+        ctx.beginPath();
+        ctx.moveTo(vpX, vpY);
+        ctx.lineTo(xBottom, h);
+        ctx.globalAlpha = 0.16;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // floating particles with parallax
+      ctx.save();
+      particles.forEach((p) => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > 1) p.vx *= -1;
+        if (p.y < 0 || p.y > 1) p.vy *= -1;
+        const px = p.x * w + mx * 18 * p.z;
+        const py = p.y * h * 0.85 + my * 10 * p.z;
+        const r = 0.6 + p.z * 1.6;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,230,168,${0.15 + p.z * 0.35})`;
+        ctx.fill();
+      });
+      ctx.restore();
+
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, []);
+
+  return <canvas ref={canvasRef} className="bm-perspective-canvas" />;
+}
+
+/* ---------------- headline reveal ---------------- */
+
+function RevealText({ text, className, delay = 0 }) {
+  const words = text.split(" ");
+  return (
+    <span className={className} aria-label={text}>
+      {words.map((w, i) => (
+        <span key={i} className="bm-word-mask">
+          <span className="bm-word" style={{ animationDelay: `${delay + i * 0.07}s` }}>{w}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/* ---------------- nav ---------------- */
+
+function Nav() {
+  return (
+    <nav className="bm-nav">
+      <div className="bm-logo">
+        <div className="bm-logo-mark"><Navigation size={16} color="#04140f" strokeWidth={2.5} /></div>
+        <span className="bm-display">Bike Maps</span>
+      </div>
+      <div className="bm-nav-links">
+        <a href="#map">Mapa</a>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#profile">Perfil</a>
+        <a href="#achievements">Conquistas</a>
+        <a href="#community">Comunidade</a>
+        <a href="#store">Loja</a>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="bm-nav-status">
+          <span className="bm-dot-live" />
+          <span className="bm-mono">1.248 online</span>
+        </div>
+        <Magnetic className="bm-btn bm-btn-primary">Começar agora <ChevronRight size={15} /></Magnetic>
+      </div>
+    </nav>
+  );
+}
+
+/* ---------------- hero ---------------- */
+
+function Hero() {
+  const mouse = useMouseParallax();
+  const progress = useScrollProgress();
+  const bikeSpin = (progress * 3600) % 360;
+  return (
+    <header className="bm-hero">
+      <PerspectiveCanvas />
+      <div className="bm-hero-glow" />
+
+      <svg className="bm-route-svg" viewBox="0 0 1200 700" preserveAspectRatio="none"
+        style={{ transform: `translate(${mouse.x * -8}px, ${mouse.y * -6}px)` }}>
+        <defs>
+          <radialGradient id="nodeglow" r="60%">
+            <stop offset="0%" stopColor={MINT} stopOpacity="0.9" />
+            <stop offset="100%" stopColor={MINT} stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        {[120, 260, 400, 540].map((y, i) => (
+          <line key={i} x1="0" y1={y} x2="1200" y2={y - 40} stroke="#172438" strokeWidth="1" />
+        ))}
+        {[160, 380, 620, 860, 1040].map((x, i) => (
+          <line key={i} x1={x} y1="0" x2={x - 60} y2="700" stroke="#172438" strokeWidth="1" />
+        ))}
+        <path className="bm-route-path" d="M -40,420 C 180,300 320,540 520,380 C 720,220 860,460 1080,320" />
+        <circle className="bm-route-node" cx="180" cy="330" r="4" />
+        <circle className="bm-route-node" cx="520" cy="380" r="4" />
+        <circle className="bm-route-node" cx="860" cy="400" r="4" />
+        <circle r="7" fill={MINT} filter="url(#nodeglow)">
+          <animateMotion dur="9s" repeatCount="indefinite" path="M -40,420 C 180,300 320,540 520,380 C 720,220 860,460 1080,320" />
+        </circle>
+      </svg>
+
+      <div className="bm-route-tag" style={{ left: "14%", top: "44%" }}>32.4 KM</div>
+      <div className="bm-route-tag" style={{ left: "40%", top: "50%" }}>01:42:18</div>
+      <div className="bm-route-tag" style={{ left: "63%", top: "30%" }}>AVG 28 KM/H</div>
+      <div className="bm-route-tag" style={{ left: "78%", top: "42%" }}>↗ 340 M</div>
+
+      <div className="bm-hero-bike" style={{ transform: `translate(${mouse.x * 12}px, ${mouse.y * 8}px)` }}>
+        <BikeGraphic spin={bikeSpin} lean={0} size={440} glow />
+      </div>
+
+      <div className="bm-float-card" style={{ top: "16%", right: "8%", animationDelay: "0s", transform: `translate(${mouse.x * 14}px, ${mouse.y * 10}px)` }}>
+        <div className="fc-label"><Bike size={11} /> Pedalando</div>
+        <div className="fc-value">28.4 <span>KM/H</span></div>
+      </div>
+      <div className="bm-float-card" style={{ top: "40%", right: "2%", animationDelay: "1.2s", transform: `translate(${mouse.x * 22}px, ${mouse.y * 16}px)` }}>
+        <div className="fc-label"><MapPin size={11} /> Rota ativa</div>
+        <div className="fc-value" style={{ fontSize: 15 }}>Brasília <span>· 32.8 KM</span></div>
+      </div>
+      <div className="bm-float-card" style={{ bottom: "14%", right: "14%", animationDelay: "2.4s", transform: `translate(${mouse.x * 10}px, ${mouse.y * 8}px)` }}>
+        <div className="fc-label"><Trophy size={11} /> Nova conquista</div>
+        <div className="fc-value">100 <span>KM</span></div>
+      </div>
+
+      <div className="bm-hero-inner">
+        <div className="bm-eyebrow bm-fade-up" style={{ animationDelay: ".1s" }}><span className="bm-eyebrow-line" /> Navegação para ciclistas · v2.0</div>
+        <h1 className="bm-hero-title bm-display">
+          <RevealText text="Cada rota conta uma" delay={0.15} />
+          <br />
+          <RevealText text="história." className="accent-line" delay={0.5} />
+        </h1>
+        <p className="bm-hero-sub bm-fade-up" style={{ animationDelay: ".9s" }}>
+          Mapas, telemetria e comunidade em uma única interface. Bike Maps transforma
+          cada pedalada em dados — velocidade, elevação, ritmo e conquistas, ao vivo.
+        </p>
+        <div className="bm-hero-actions bm-fade-up" style={{ animationDelay: "1.05s" }}>
+          <Magnetic className="bm-btn-primary"><Play size={15} /> Iniciar pedalada</Magnetic>
+          <Magnetic className="bm-btn-ghost">Ver o mapa <ArrowUpRight size={15} /></Magnetic>
+        </div>
+      </div>
+
+      <div className="bm-scroll-cue bm-mono">
+        <span>ROLE PARA PEDALAR</span>
+        <div className="bm-scroll-cue-line" />
+      </div>
+    </header>
+  );
+}
+
+function LiveTicker() {
+  const items = [
+    { icon: <Users size={13} />, text: <><b>1.248</b> ciclistas online</> },
+    { icon: <Compass size={13} />, text: <><b>37</b> rotas populares agora</> },
+    { icon: <Radio size={13} />, text: <><b>12</b> ciclistas próximos</> },
+    { icon: <Signal size={13} />, text: "GPS conectado" },
+    { icon: <Clock size={13} />, text: "Última atualização: agora" },
+    { icon: <Thermometer size={13} />, text: "Clima: 24°C" },
+    { icon: <Wind size={13} />, text: "Vento: 12 KM/H" },
+  ];
+  const row = [...items, ...items];
+  return (
+    <div className="bm-ticker-wrap bm-mono">
+      <div className="bm-ticker">
+        {row.map((it, i) => (
+          <div className="bm-ticker-item" key={i}>{it.icon} {it.text}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Section({ id, kicker, title, desc, children, right }) {
+  const [ref, shown] = useReveal();
+  return (
+    <section id={id} className="bm-section" ref={ref}>
+      <div className={`bm-section-inner bm-reveal ${shown ? "in" : ""}`}>
+        <div className="bm-section-head">
+          <div>
+            <div className="bm-kicker"><span className="bm-eyebrow-line" /> {kicker}</div>
+            <h2 className="bm-section-title bm-display">{title}</h2>
+          </div>
+          {right || <p className="bm-section-desc">{desc}</p>}
+        </div>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+const ROUTES = [
+  { name: "Circuito Lago Sul", dist: "18.2 km", diff: "Fácil", diffClass: "easy", time: "42 min", elev: "+120 m" },
+  { name: "Trilha Cristal Water", dist: "34.6 km", diff: "Médio", diffClass: "med", time: "1h 28min", elev: "+380 m" },
+  { name: "Rota das Chapadas", dist: "52.1 km", diff: "Difícil", diffClass: "hard", time: "2h 40min", elev: "+920 m" },
+  { name: "Volta do Parque Sul", dist: "9.4 km", diff: "Fácil", diffClass: "easy", time: "24 min", elev: "+45 m" },
+];
+
+function MapSection() {
+  const [active, setActive] = useState(0);
+  return (
+    <Section id="map" kicker="Mapa interativo" title="Cada esquina, mapeada." desc="Ruas, ciclovias, oficinas e pontos de descanso — em uma interface de navegação completa, feita para pedalar.">
+      <Tilt max={3} className="bm-map-wrap">
+        <div className="bm-map-canvas">
+          <div className="bm-map-grid" />
+          <svg width="100%" height="100%" viewBox="0 0 700 560" style={{ position: "absolute", inset: 0 }} preserveAspectRatio="none">
+            <path d="M -20,180 C 140,120 260,260 420,180 C 560,110 640,220 740,160" fill="none" stroke={MINT} strokeWidth="2.5" opacity="0.85" />
+            <path d="M 40,-20 C 100,140 60,280 160,400 C 240,500 340,480 420,560" fill="none" stroke={VIOLET} strokeWidth="2" strokeDasharray="6 8" opacity="0.5" />
+            <path d="M -20,420 L 740,380" stroke="#172438" strokeWidth="1" />
+            <path d="M 220,-20 L 260,580" stroke="#172438" strokeWidth="1" />
+            <path d="M 500,-20 L 460,580" stroke="#172438" strokeWidth="1" />
+          </svg>
+          <div className="bm-map-marker" style={{ top: "30%", left: "18%" }} />
+          <div className="bm-map-marker violet" style={{ top: "58%", left: "52%" }} />
+          <div className="bm-map-marker amber" style={{ top: "22%", left: "68%" }} />
+          <div className="bm-map-marker" style={{ top: "72%", left: "30%" }} />
+          <div className="bm-map-controls">
+            <div className="bm-map-ctrl-btn">+</div>
+            <div className="bm-map-ctrl-btn">−</div>
+            <div className="bm-map-ctrl-btn"><Compass size={15} /></div>
+          </div>
+          <div className="bm-map-hud">
+            <div className="bm-hud-chip bm-mono"><MapPin size={11} /> Brasília, DF</div>
+            <div className="bm-hud-chip bm-mono"><Signal size={11} /> GPS ativo</div>
+          </div>
+        </div>
+        <div className="bm-sidebar">
+          <div className="bm-sidebar-title">Rotas próximas</div>
+          {ROUTES.map((r, i) => (
+            <div key={r.name} className={`bm-route-card ${active === i ? "active" : ""}`} onMouseEnter={() => setActive(i)}>
+              <div className="bm-route-card-top">
+                <span className="bm-route-card-name">{r.name}</span>
+                <span className={`bm-diff-badge bm-diff-${r.diffClass}`}>{r.diff}</span>
+              </div>
+              <div className="bm-route-card-meta bm-mono">
+                <span><Navigation size={11} /> {r.dist}</span>
+                <span><Clock size={11} /> {r.time}</span>
+                <span><Mountain size={11} /> {r.elev}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Tilt>
+    </Section>
+  );
+}
+
+const SPEED_DATA = [
+  { km: 0, speed: 18, elev: 10 }, { km: 4, speed: 24, elev: 14 }, { km: 8, speed: 27, elev: 22 },
+  { km: 12, speed: 22, elev: 40 }, { km: 16, speed: 30, elev: 30 }, { km: 20, speed: 33, elev: 18 },
+  { km: 24, speed: 28, elev: 12 }, { km: 28, speed: 31, elev: 8 }, { km: 32, speed: 26, elev: 6 },
+];
+
+function StatCell({ icon, iconClass, label, value, unit, decimals = 0 }) {
+  const [display, ref] = useOdometer(value, { decimals });
+  return (
+    <Tilt max={8} className="bm-stat-cell" style={{}}>
+      <div ref={ref}>
+        <div className={`icon-wrap ${iconClass || ""}`}>{icon}</div>
+        <div className="bm-stat-label">{label}</div>
+        <div className="bm-stat-value bm-mono">{display}<small>{unit}</small></div>
+      </div>
+    </Tilt>
+  );
+}
+
+function DashboardSection() {
+  return (
+    <Section id="dashboard" kicker="Dashboard de pedal" title="Telemetria em tempo real." desc="Velocidade, elevação, calorias e ritmo — tudo ao vivo, com comparação automática com sua última rota.">
+      <div className="bm-stat-grid">
+        <StatCell icon={<Gauge size={17} />} label="Velocidade" value={28.4} decimals={1} unit=" km/h" />
+        <StatCell icon={<Navigation size={17} />} iconClass="violet" label="Distância" value={32.84} decimals={2} unit=" km" />
+        <StatCell icon={<Flame size={17} />} iconClass="amber" label="Calorias" value={842} unit=" kcal" />
+        <StatCell icon={<Mountain size={17} />} iconClass="violet" label="Elevação" value={342} unit=" m" />
+      </div>
+
+      <div className="bm-chart-panel">
+        <div className="bm-chart-head">
+          <div>
+            <div className="bm-stat-label" style={{ marginBottom: 4 }}>Velocidade &amp; altitude</div>
+            <div style={{ fontSize: 15, color: "var(--mute)" }}>Últimos 32 km</div>
+          </div>
+          <div className="bm-compare-pill"><TrendingUp size={13} /> 18% mais rápido que sua última rota</div>
+        </div>
+        <div style={{ width: "100%", height: 260, marginTop: 16 }}>
+          <SimpleAreaChart data={SPEED_DATA} />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function SimpleAreaChart({ data }) {
+  const W = 760, H = 260, padL = 34, padR = 10, padT = 10, padB = 26;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const maxSpeed = Math.max(...data.map((d) => d.speed)) * 1.15;
+  const maxElev = Math.max(...data.map((d) => d.elev)) * 1.6;
+  const xAt = (i) => padL + (i / (data.length - 1)) * innerW;
+  const yAt = (v, max) => padT + innerH - (v / max) * innerH;
+
+  const linePath = (key, max) =>
+    data.map((d, i) => `${i === 0 ? "M" : "L"} ${xAt(i)},${yAt(d[key], max)}`).join(" ");
+  const areaPath = (key, max) =>
+    `${linePath(key, max)} L ${xAt(data.length - 1)},${padT + innerH} L ${xAt(0)},${padT + innerH} Z`;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="speedGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={MINT} stopOpacity="0.5" />
+          <stop offset="100%" stopColor={MINT} stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={VIOLET} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={VIOLET} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <line key={f} x1={padL} x2={W - padR} y1={padT + innerH * (1 - f)} y2={padT + innerH * (1 - f)} stroke="#172438" strokeWidth="1" />
+      ))}
+      <path d={areaPath("elev", maxElev)} fill="url(#elevGrad)" />
+      <path d={linePath("elev", maxElev)} fill="none" stroke={VIOLET} strokeWidth="2" />
+      <path d={areaPath("speed", maxSpeed)} fill="url(#speedGrad)" />
+      <path d={linePath("speed", maxSpeed)} fill="none" stroke={MINT} strokeWidth="2.5" />
+      {data.map((d, i) => (
+        <circle key={i} cx={xAt(i)} cy={yAt(d.speed, maxSpeed)} r="3" fill={MINT} />
+      ))}
+      {data.map((d, i) => (
+        <text key={i} x={xAt(i)} y={H - 6} fontSize="10" fill="#7c8798" textAnchor="middle" fontFamily="JetBrains Mono, monospace">{d.km}km</text>
+      ))}
+    </svg>
+  );
+}
+
+const MEDALS = [
+  { icon: <Target size={22} />, name: "Explorador", desc: "Explore 500 km de rotas novas", pct: 84, locked: false },
+  { icon: <Zap size={22} />, name: "40 km/h", desc: "Atinja velocidade máxima de 40 km/h", pct: 100, locked: false },
+  { icon: <Flame size={22} />, name: "7 dias seguidos", desc: "Pedale por 7 dias consecutivos", pct: 100, locked: false },
+  { icon: <Award size={22} />, name: "Centurião", desc: "Complete 100 km em uma única rota", pct: 100, locked: false },
+  { icon: <Mountain size={22} />, name: "Escalador", desc: "Acumule 5.000 m de elevação", pct: 61, locked: false },
+  { icon: <Trophy size={22} />, name: "Maratonista", desc: "Complete 1.000 km no total", pct: 38, locked: false },
+  { icon: <Lock size={22} />, name: "Lenda urbana", desc: "Desbloqueie completando 20 conquistas", pct: 12, locked: true },
+  { icon: <Lock size={22} />, name: "Global", desc: "Pedale em 5 cidades diferentes", pct: 0, locked: true },
+];
+
+function Medal({ m }) {
+  const [pct, ref] = useOdometer(m.pct, { duration: 1200 });
+  return (
+    <Tilt max={10} className={`bm-medal ${m.locked ? "locked" : ""}`}>
+      <div ref={ref}>
+        <div className="bm-medal-badge">{m.icon}</div>
+        <div className="bm-medal-name">{m.name}</div>
+        <div className="bm-medal-desc">{m.desc}</div>
+        <div className="bm-progress-track"><div className="bm-progress-fill" style={{ width: `${pct}%` }} /></div>
+        <div className="bm-progress-pct bm-mono">{pct}%</div>
+      </div>
+    </Tilt>
+  );
+}
+
+function AchievementsSection() {
+  return (
+    <Section id="achievements" kicker="Sistema de conquistas" title="Progresso que fica visível." desc="Cada pedalada aproxima você de uma nova medalha — desbloqueadas e bloqueadas, lado a lado.">
+      <div className="bm-medal-grid">
+        {MEDALS.map((m) => <Medal key={m.name} m={m} />)}
+      </div>
+    </Section>
+  );
+}
+
+const FEED = [
+  { name: "João Pedro", init: "JP", time: "há 4 min", action: "completou uma rota de 45 km", label1: "Distância", dist: "45.2 km", time2: "1h 18min", speed: "26.4 km/h", likes: 24, comments: 6 },
+  { name: "Marina Alves", init: "MA", time: "há 12 min", action: "desbloqueou uma conquista", label1: "Conquista", dist: "Escalador", time2: "5.000 m", speed: "Nível 27", likes: 41, comments: 9 },
+  { name: "Carlos Lima", init: "CL", time: "há 27 min", action: "bateu recorde pessoal de velocidade", label1: "Recorde", dist: "42.1 km/h", time2: "Trecho 2.4 km", speed: "↑ 3.6 km/h", likes: 58, comments: 14 },
+  { name: "Beatriz Nunes", init: "BN", time: "há 41 min", action: "entrou no desafio 'Julho Ativo'", challenge: true, progress: 62, likes: 19, comments: 3 },
+];
+
+function FeedCard({ f }) {
+  if (f.challenge) {
+    return (
+      <Tilt max={4} className="bm-feed-card">
+        <div>
+          <div className="bm-feed-top">
+            <div className="bm-avatar">{f.init}</div>
+            <div>
+              <div className="bm-feed-name">{f.name} <span style={{ color: "var(--mute)", fontWeight: 400 }}>{f.action}</span></div>
+              <div className="bm-feed-time bm-mono">{f.time}</div>
+            </div>
+          </div>
+          <div className="bm-feed-challenge">
+            <div className="bm-feed-challenge-top">
+              <span><Target size={13} /> Meta: 300 km no mês</span>
+              <span className="bm-mono">{f.progress}%</span>
+            </div>
+            <div className="bm-progress-track"><div className="bm-progress-fill" style={{ width: `${f.progress}%` }} /></div>
+          </div>
+          <div className="bm-feed-actions">
+            <span className="bm-feed-action"><Heart size={14} /> {f.likes}</span>
+            <span className="bm-feed-action"><MessageCircle size={14} /> {f.comments}</span>
+            <span className="bm-feed-action"><Share2 size={14} /> Compartilhar</span>
+          </div>
+        </div>
+      </Tilt>
+    );
+  }
+  return (
+    <Tilt max={4} className="bm-feed-card">
+      <div>
+        <div className="bm-feed-top">
+          <div className="bm-avatar">{f.init}</div>
+          <div>
+            <div className="bm-feed-name">{f.name} <span style={{ color: "var(--mute)", fontWeight: 400 }}>{f.action}</span></div>
+            <div className="bm-feed-time bm-mono">{f.time}</div>
+          </div>
+        </div>
+        <div className="bm-feed-map">
+          <svg width="100%" height="100%" viewBox="0 0 400 120" preserveAspectRatio="none">
+            <path d="M -10,80 C 60,40 120,100 190,60 C 260,20 320,90 410,40" fill="none" stroke={MINT} strokeWidth="2" opacity="0.8" />
+          </svg>
+        </div>
+        <div className="bm-feed-stats">
+          <div className="bm-feed-stat">{f.label1}<b className="bm-mono">{f.dist}</b></div>
+          <div className="bm-feed-stat">{f.name === "Marina Alves" ? "Elevação" : "Tempo"}<b className="bm-mono">{f.time2}</b></div>
+          <div className="bm-feed-stat">{f.name === "Marina Alves" ? "Nível" : "Média"}<b className="bm-mono">{f.speed}</b></div>
+        </div>
+        <div className="bm-feed-actions">
+          <span className="bm-feed-action"><Heart size={14} /> {f.likes}</span>
+          <span className="bm-feed-action"><MessageCircle size={14} /> {f.comments}</span>
+          <span className="bm-feed-action"><Share2 size={14} /> Compartilhar</span>
+        </div>
+      </div>
+    </Tilt>
+  );
+}
+
+function CommunitySection() {
+  return (
+    <Section id="community" kicker="Comunidade" title="Pedale acompanhado." desc="Veja o que ciclistas perto de você estão conquistando, em tempo real.">
+      <div className="bm-feed">
+        {FEED.map((f) => <FeedCard key={f.name} f={f} />)}
+      </div>
+    </Section>
+  );
+}
+
+function SosCta() {
+  return (
+    <section className="bm-section" style={{ paddingTop: 80, paddingBottom: 80 }}>
+      <div className="bm-section-inner">
+        <div className="bm-sos-panel">
+          <div className="bm-sos-btn bm-display">SOS</div>
+          <div>
+            <div className="bm-kicker"><span className="bm-eyebrow-line" /> Segurança</div>
+            <h2 className="bm-section-title bm-display" style={{ marginBottom: 12 }}>Ajuda a um toque de distância.</h2>
+            <p className="bm-section-desc" style={{ maxWidth: 480, marginBottom: 22 }}>
+              Em caso de emergência, sua localização é compartilhada instantaneamente com seus contatos de confiança.
+            </p>
+            <div className="bm-sos-grid bm-mono">
+              <div className="bm-sos-status"><Wifi size={14} /> Internet <span className="ok">OK</span></div>
+              <div className="bm-sos-status"><MapPin size={14} /> Localização <span className="ok">OK</span></div>
+              <div className="bm-sos-status"><Signal size={14} /> GPS <span className="ok">OK</span></div>
+              <div className="bm-sos-status"><Battery size={14} /> Contato de emergência <span className="ok">OK</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="bm-footer">
+      <div className="bm-footer-inner">
+        <div className="bm-logo">
+          <div className="bm-logo-mark"><Navigation size={16} color="#04140f" strokeWidth={2.5} /></div>
+          <span className="bm-display">Bike Maps</span>
+        </div>
+        <div className="bm-footer-meta">© 2026 BIKE MAPS · LAT -15.7801 · LON -47.9292 · BUILD 2.0.4</div>
+      </div>
+    </footer>
+  );
+}
+
+/* ================= PROFILE ================= */
+
+const PROFILE_STATS = [
+  { label: "Distância total", value: "1.284", unit: " km" },
+  { label: "Pedaladas", value: "48", unit: "" },
+  { label: "Elevação total", value: "8.420", unit: " m" },
+  { label: "Tempo em movimento", value: "32h 14m", unit: "" },
+];
+
+const TIMELINE = [
+  { type: "pedal", label: "Circuito Lago Sul", meta: "18.2 km · há 2 dias", icon: <Bike size={14} /> },
+  { type: "conquista", label: "Conquistou 'Centurião'", meta: "100 km em uma rota · há 4 dias", icon: <Trophy size={14} /> },
+  { type: "pedal", label: "Rota das Chapadas", meta: "52.1 km · há 6 dias", icon: <Bike size={14} /> },
+  { type: "desafio", label: "Entrou no desafio 'Julho Ativo'", meta: "Meta: 300 km no mês · há 9 dias", icon: <Target size={14} /> },
+  { type: "conquista", label: "Conquistou '40 km/h'", meta: "Velocidade máxima · há 12 dias", icon: <Zap size={14} /> },
+];
+
+function ProfileSection() {
+  return (
+    <Section id="profile" kicker="Perfil do ciclista" title="Seu histórico, todo em um só lugar." desc="Estatísticas acumuladas, medalhas conquistadas e a linha do tempo de cada pedalada.">
+      <div className="bm-profile-grid">
+        <Tilt max={4} className="bm-profile-card">
+          <div>
+            <div className="bm-profile-top">
+              <div className="bm-profile-avatar bm-display">RS</div>
+              <div className="bm-profile-level bm-mono"><Award size={11} /> LEVEL 27</div>
+            </div>
+            <div className="bm-profile-name bm-display">Rafael Souza</div>
+            <div className="bm-profile-handle bm-mono">@rafasouza · Brasília, DF</div>
+            <div className="bm-profile-stats">
+              {PROFILE_STATS.map((s) => {
+                const numeric = parseFloat(s.value.replace(/\./g, "").replace(",", "."));
+                const isNumeric = !isNaN(numeric) && /^[\d.,]+$/.test(s.value);
+                return (
+                  <div className="bm-profile-stat" key={s.label}>
+                    <div className="bm-profile-stat-label">{s.label}</div>
+                    {isNumeric ? (
+                      <ProfileOdometer target={numeric} unit={s.unit} />
+                    ) : (
+                      <div className="bm-profile-stat-value bm-mono">{s.value}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bm-profile-medals">
+              {["100 KM", "7 DIAS", "40 KM/H", "EXPLORADOR"].map((m) => (
+                <div className="bm-mini-medal bm-mono" key={m}><Trophy size={11} /> {m}</div>
+              ))}
+            </div>
+          </div>
+        </Tilt>
+
+        <div className="bm-timeline">
+          <div className="bm-sidebar-title">Linha do tempo</div>
+          {TIMELINE.map((t, i) => (
+            <div className="bm-timeline-item" key={i}>
+              <div className={`bm-timeline-dot ${t.type}`}>{t.icon}</div>
+              <div className="bm-timeline-body">
+                <div className="bm-timeline-label">{t.label}</div>
+                <div className="bm-timeline-meta bm-mono">{t.meta}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function ProfileOdometer({ target, unit }) {
+  const [display, ref] = useOdometer(target, { decimals: 0 });
+  const formatted = Number(display).toLocaleString("pt-BR");
+  return <div className="bm-profile-stat-value bm-mono" ref={ref}>{formatted}<small>{unit}</small></div>;
+}
+
+/* ================= STORE ================= */
+
+const PRODUCTS = [
+  { name: "Capacete Aero Pro", cat: "Proteção", price: "R$ 449", old: "R$ 599", off: "-25%", rating: 4.8, install: "6x R$ 74,83", icon: <Target size={26} /> },
+  { name: "Luz LED 1200 Lumens", cat: "Iluminação", price: "R$ 189", old: null, off: null, rating: 4.6, install: "3x R$ 63,00", icon: <Zap size={26} /> },
+  { name: "Computador GPS X3", cat: "Eletrônicos", price: "R$ 899", old: "R$ 1.099", off: "-18%", rating: 4.9, install: "10x R$ 89,90", icon: <Gauge size={26} /> },
+  { name: "Garrafa Térmica 750ml", cat: "Acessórios", price: "R$ 79", old: null, off: null, rating: 4.5, install: "2x R$ 39,50", icon: <Mountain size={26} /> },
+];
+
+const CATEGORIES = ["Todos", "Proteção", "Iluminação", "Eletrônicos", "Acessórios", "Roupas"];
+
+function StoreSection() {
+  const [cat, setCat] = useState("Todos");
+  const filtered = cat === "Todos" ? PRODUCTS : PRODUCTS.filter((p) => p.cat === cat);
+  return (
+    <Section id="store" kicker="Loja" title="Equipamento para ir mais longe." right={
+      <div className="bm-store-search bm-mono">
+        <Compass size={13} /> Buscar produtos…
+      </div>
+    }>
+      <div className="bm-store-banner">
+        <div>
+          <div className="bm-kicker" style={{ color: "#04140f" }}><span className="bm-eyebrow-line" style={{ background: "#04140f" }} /> Promoção da semana</div>
+          <div className="bm-store-banner-title bm-display">Até 25% off em eletrônicos</div>
+        </div>
+        <Magnetic className="bm-btn-dark">Ver ofertas <ArrowUpRight size={14} /></Magnetic>
+      </div>
+
+      <div className="bm-store-cats">
+        {CATEGORIES.map((c) => (
+          <button key={c} className={`bm-cat-pill ${cat === c ? "active" : ""}`} onClick={() => setCat(c)}>{c}</button>
+        ))}
+      </div>
+
+      <div className="bm-product-grid">
+        {filtered.map((p) => (
+          <Tilt max={6} className="bm-product-card" key={p.name}>
+            <div>
+              <div className="bm-product-media">
+                <div className="bm-product-icon">{p.icon}</div>
+                {p.off && <div className="bm-product-off">{p.off}</div>}
+                <div className="bm-product-fav"><Heart size={13} /></div>
+              </div>
+              <div className="bm-product-cat bm-mono">{p.cat}</div>
+              <div className="bm-product-name">{p.name}</div>
+              <div className="bm-product-rating bm-mono"><Trophy size={10} /> {p.rating}</div>
+              <div className="bm-product-price-row">
+                <span className="bm-product-price">{p.price}</span>
+                {p.old && <span className="bm-product-old">{p.old}</span>}
+              </div>
+              <div className="bm-product-install bm-mono">{p.install}</div>
+              <button className="bm-btn-add">Adicionar</button>
+            </div>
+          </Tilt>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/* ================= MOBILE BOTTOM NAV ================= */
+
+function MobileNav() {
+  const [active, setActive] = useState("home");
+  const items = [
+    { id: "home", icon: <Navigation size={18} />, label: "Início" },
+    { id: "map", icon: <MapPin size={18} />, label: "Mapa" },
+    { id: "dashboard", icon: <Gauge size={18} />, label: "Pedal" },
+    { id: "profile", icon: <Award size={18} />, label: "Perfil" },
+    { id: "store", icon: <Compass size={18} />, label: "Loja" },
+  ];
+  return (
+    <div className="bm-mobile-nav">
+      {items.map((it) => (
+        <a
+          key={it.id}
+          href={`#${it.id}`}
+          className={`bm-mobile-nav-item ${active === it.id ? "active" : ""}`}
+          onClick={() => setActive(it.id)}
+        >
+          {it.icon}
+          <span>{it.label}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function GlobalStyles() {
+  return (
+    <style>{`
+      .bm-root {
+        --bg: #05070b; --bg2: #0b0f16; --bg3: #0e1420; --line: #172438;
+        --mint: #00e6a8; --mint-dim: #00e6a833; --violet: #7c6cff; --violet-dim: #7c6cff33;
+        --amber: #ff8a4c; --ink: #eaf0f6; --mute: #7c8798; --mute-dim: #465166;
+        font-family: 'Inter', sans-serif; background: var(--bg); color: var(--ink);
+        position: relative; min-height: 100vh; cursor: none;
+      }
+      .bm-root * { box-sizing: border-box; }
+      .bm-root ::selection { background: var(--mint); color: #05070b; }
+      @media (hover: none) { .bm-root { cursor: auto; } .bm-comet-wrap { display: none; } }
+      .bm-app { position: relative; opacity: 0; transition: opacity .6s ease; }
+      .bm-app.in { opacity: 1; }
+      .bm-display { font-family: 'Space Grotesk', sans-serif; }
+      .bm-mono { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em; }
+
+      /* ---------- boot sequence ---------- */
+      .bm-boot {
+        position: fixed; inset: 0; z-index: 10000; background: #05070b;
+        display: flex; align-items: center; justify-content: center;
+        transition: transform .5s cubic-bezier(.6,0,.2,1), opacity .5s ease;
+      }
+      .bm-boot.leave { transform: translateY(-100%); opacity: 0.6; }
+      .bm-boot-grid {
+        position: absolute; inset: 0; opacity: 0.4;
+        background-image: linear-gradient(#172438 1px, transparent 1px), linear-gradient(90deg, #172438 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, black 0%, transparent 80%);
+      }
+      .bm-boot-inner { position: relative; z-index: 2; width: 380px; text-align: center; }
+      .bm-boot-mark {
+        width: 52px; height: 52px; margin: 0 auto 22px; border-radius: 14px;
+        border: 1px solid #00e6a855; display: flex; align-items: center; justify-content: center;
+        animation: bm-spin 2.4s linear infinite; box-shadow: 0 0 30px rgba(0,230,168,0.25);
+      }
+      @keyframes bm-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+      .bm-boot-log { text-align: left; font-size: 11px; color: #7c8798; height: 132px; margin-bottom: 14px; }
+      .bm-boot-line { padding: 3px 0; animation: bm-line-in .3s ease both; }
+      .bm-boot-line .ok { color: var(--mint); margin-right: 6px; }
+      @keyframes bm-line-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
+      .bm-boot-bar-track { height: 2px; background: #172438; border-radius: 100px; overflow: hidden; margin-bottom: 8px; }
+      .bm-boot-bar-fill { height: 100%; background: linear-gradient(90deg, var(--mint), var(--violet)); transition: width .2s ease; box-shadow: 0 0 10px var(--mint); }
+      .bm-boot-pct { font-size: 11px; color: var(--mute); text-align: right; }
+
+      /* ---------- comet cursor ---------- */
+      .bm-comet-wrap { position: fixed; inset: 0; pointer-events: none; z-index: 9999; }
+      .bm-comet-dot {
+        position: fixed; top: 0; left: 0; width: 10px; height: 10px; border-radius: 50%;
+        background: var(--mint); pointer-events: none; will-change: transform;
+        box-shadow: 0 0 10px var(--mint);
+      }
+      .bm-comet-dot.lead { width: 26px; height: 26px; background: transparent; border: 1.5px solid var(--mint); box-shadow: 0 0 16px var(--mint-dim); }
+
+      /* ---------- noise ---------- */
+      .bm-noise {
+        position: fixed; inset: 0; pointer-events: none; z-index: 40; opacity: 0.035; mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+
+      /* ---------- master route spine ---------- */
+      .bm-master-route { position: absolute; top: 0; left: 0; width: 100%; z-index: 1; pointer-events: none; }
+      .bm-rider-marker { position: absolute; top: 0; left: 0; z-index: 2; display: flex; align-items: center; gap: 10px; }
+      .bm-rider-bob { animation: bm-rider-bob-kf 1.1s ease-in-out infinite; filter: drop-shadow(0 0 8px rgba(0,230,168,0.5)); }
+      @keyframes bm-rider-bob-kf { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+      .bm-rider-pulse {
+        position: absolute; left: 18px; top: 10px; width: 14px; height: 14px; border-radius: 50%; background: var(--mint);
+        animation: bm-ping 1.8s cubic-bezier(0,0,.2,1) infinite;
+      }
+      @keyframes bm-ping { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(3.2); opacity: 0; } }
+      .bm-rider-tag {
+        font-size: 10px; color: var(--mint); background: rgba(5,7,11,0.85); border: 1px solid var(--mint-dim);
+        padding: 3px 8px; border-radius: 100px; white-space: nowrap;
+      }
+
+      /* ---------- grid bg ---------- */
+      .bm-grid-bg {
+        position: absolute; inset: 0;
+        background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+        background-size: 64px 64px; mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 90%); opacity: 0.5;
+      }
+
+      /* ---------- nav ---------- */
+      .bm-nav {
+        position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between;
+        padding: 16px 32px; background: rgba(5,7,11,0.72); backdrop-filter: blur(16px); border-bottom: 1px solid var(--line);
+      }
+      .bm-logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; }
+      .bm-logo-mark {
+        width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, var(--mint), #00a97a);
+        display: flex; align-items: center; justify-content: center; box-shadow: 0 0 24px var(--mint-dim);
+      }
+      .bm-nav-links { display: flex; gap: 28px; }
+      .bm-nav-links a { color: var(--mute); text-decoration: none; font-size: 14px; font-weight: 500; position: relative; padding-bottom: 4px; transition: color .2s; }
+      .bm-nav-links a:hover { color: var(--ink); }
+      .bm-nav-links a::after { content: ''; position: absolute; left: 0; bottom: -2px; width: 0; height: 1px; background: var(--mint); transition: width .25s ease; }
+      .bm-nav-links a:hover::after { width: 100%; }
+      .bm-nav-status {
+        display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--mute);
+        padding: 6px 12px; border: 1px solid var(--line); border-radius: 100px; background: rgba(255,255,255,0.02);
+      }
+      .bm-dot-live { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 8px var(--mint); animation: bm-pulse 1.6s ease-in-out infinite; }
+      @keyframes bm-pulse { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.4; transform:scale(.7);} }
+
+      /* ---------- buttons / magnetic ---------- */
+      .bm-btn, .bm-magnetic {
+        display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 10px;
+        font-size: 14px; font-weight: 600; border: none; cursor: none; font-family: 'Inter', sans-serif;
+        transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+      }
+      .bm-magnetic { transition: transform .12s ease-out, box-shadow .2s ease; }
+      .bm-magnetic span { display: inline-flex; align-items: center; gap: 8px; }
+      .bm-btn-primary, .bm-magnetic.bm-btn-primary { background: var(--mint); color: #04140f; }
+      .bm-btn-primary:hover, .bm-magnetic.bm-btn-primary:hover { box-shadow: 0 8px 28px var(--mint-dim); }
+      .bm-btn-ghost, .bm-magnetic.bm-btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+      .bm-btn-ghost:hover, .bm-magnetic.bm-btn-ghost:hover { border-color: var(--mute-dim); }
+
+      /* ---------- hero ---------- */
+      .bm-hero { position: relative; min-height: 96vh; display: flex; flex-direction: column; justify-content: center; padding: 40px 32px 80px; overflow: hidden; border-bottom: 1px solid var(--line); }
+      .bm-perspective-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+      .bm-hero-glow {
+        position: absolute; width: 900px; height: 900px; border-radius: 50%;
+        background: radial-gradient(circle, var(--mint-dim) 0%, transparent 65%); top: -420px; left: 50%; transform: translateX(-50%);
+        pointer-events: none; animation: bm-drift 12s ease-in-out infinite; z-index: 1;
+      }
+      @keyframes bm-drift { 0%,100%{ transform: translate(-50%,0) scale(1);} 50%{ transform: translate(-46%,20px) scale(1.06);} }
+      .bm-hero-inner { position: relative; z-index: 3; max-width: 1240px; margin: 0 auto; width: 100%; }
+      .bm-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mint); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 22px; font-weight: 600; }
+      .bm-eyebrow-line { width: 28px; height: 1px; background: var(--mint); }
+      .bm-hero-title { font-size: clamp(44px, 7vw, 92px); line-height: 0.98; font-weight: 700; letter-spacing: -0.03em; max-width: 900px; margin: 0 0 24px; }
+      .bm-hero-title .accent-line { color: var(--mint); font-style: italic; font-weight: 500; }
+      .bm-hero-sub { font-size: 18px; color: var(--mute); max-width: 460px; line-height: 1.6; margin-bottom: 36px; opacity: 0; }
+      .bm-hero-actions { display: flex; gap: 14px; align-items: center; opacity: 0; }
+
+      .bm-fade-up { animation: bm-fade-up-kf .8s cubic-bezier(.2,.7,.2,1) both; }
+      @keyframes bm-fade-up-kf { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+
+      .bm-word-mask { display: inline-block; overflow: hidden; vertical-align: top; margin-right: 0.28em; }
+      .bm-word { display: inline-block; transform: translateY(110%) rotate(4deg); opacity: 0; animation: bm-word-in .9s cubic-bezier(.2,.7,.15,1) forwards; }
+      @keyframes bm-word-in { to { transform: translateY(0) rotate(0); opacity: 1; } }
+
+      .bm-scroll-cue {
+        position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 3;
+        display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 10px; letter-spacing: 0.14em;
+        color: var(--mute); opacity: 0; animation: bm-fade-up-kf 1s ease 1.5s forwards;
+      }
+      .bm-scroll-cue-line { width: 1px; height: 34px; background: linear-gradient(var(--mint), transparent); animation: bm-scroll-cue-kf 1.8s ease-in-out infinite; }
+      @keyframes bm-scroll-cue-kf { 0% { transform: scaleY(0); transform-origin: top; } 50% { transform: scaleY(1); transform-origin: top; } 51% { transform-origin: bottom; } 100% { transform: scaleY(0); transform-origin: bottom; } }
+
+      .bm-float-card {
+        position: absolute; z-index: 4; background: rgba(11,15,22,0.7); backdrop-filter: blur(14px);
+        border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        animation: bm-float 6s ease-in-out infinite; transition: transform .15s ease-out;
+      }
+      .bm-float-card .fc-label { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600; }
+      .bm-float-card .fc-value { font-size: 20px; font-weight: 700; }
+      .bm-float-card .fc-value span { font-size: 12px; color: var(--mute); font-weight: 500; }
+      @keyframes bm-float { 0%,100%{ transform: translateY(0);} 50%{ transform: translateY(-14px);} }
+
+      .bm-hero-bike {
+        position: absolute; z-index: 3; right: 2%; bottom: 4%;
+        opacity: 0; animation: bm-fade-up-kf 1.1s ease .35s forwards, bm-float 7s ease-in-out 1.4s infinite;
+        pointer-events: none;
+      }
+      @media (max-width: 1100px) { .bm-hero-bike { right: -6%; bottom: -2%; opacity: 0.5 !important; } }
+      @media (max-width: 700px) { .bm-hero-bike { display: none; } }
+
+      .bm-route-svg { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; }
+      .bm-route-path { fill: none; stroke: var(--mint); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 8 10; opacity: 0.9; animation: bm-dash 26s linear infinite; filter: drop-shadow(0 0 6px var(--mint-dim)); }
+      @keyframes bm-dash { to { stroke-dashoffset: -1000; } }
+      .bm-route-node { fill: var(--mint); }
+      .bm-route-tag {
+        position: absolute; z-index: 3; transform: translate(-50%,-50%); font-family: 'JetBrains Mono', monospace;
+        font-size: 10px; color: var(--mint); background: rgba(5,7,11,0.65); border: 1px solid var(--mint-dim);
+        padding: 3px 8px; border-radius: 100px; white-space: nowrap; pointer-events: none;
+        animation: bm-tag-in 1s ease both, bm-float 5s ease-in-out infinite;
+        animation-delay: 1.6s, 1.6s;
+      }
+      @keyframes bm-tag-in { from { opacity: 0; transform: translate(-50%,-50%) scale(.6); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+
+      /* ---------- persistent micro badge ---------- */
+      .bm-micro-badge {
+        position: fixed; left: 20px; bottom: 20px; z-index: 90; display: flex; gap: 8px;
+        opacity: 0; animation: bm-fade-up-kf .6s ease 2.4s forwards;
+      }
+      .bm-micro-chip {
+        display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--mute);
+        background: rgba(5,7,11,0.75); border: 1px solid var(--line); padding: 6px 10px; border-radius: 100px;
+        backdrop-filter: blur(8px); font-family: 'JetBrains Mono', monospace;
+      }
+      .bm-micro-chip .live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 6px var(--mint); animation: bm-pulse 1.6s ease-in-out infinite; }
+      @media (max-width: 860px) { .bm-micro-badge { display: none; } }
+
+      /* ---------- ticker ---------- */
+      .bm-ticker-wrap { border-bottom: 1px solid var(--line); background: var(--bg2); overflow: hidden; padding: 12px 0; position: relative; z-index: 2; }
+      .bm-ticker { display: flex; gap: 48px; white-space: nowrap; animation: bm-scroll 32s linear infinite; width: max-content; }
+      .bm-ticker-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--mute); }
+      .bm-ticker-item b { color: var(--ink); font-weight: 600; }
+      @keyframes bm-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+      /* ---------- generic section ---------- */
+      .bm-section { position: relative; padding: 130px 32px; border-bottom: 1px solid var(--line); overflow: hidden; z-index: 2; }
+      .bm-section-inner { max-width: 1240px; margin: 0 auto; position: relative; z-index: 2; }
+      .bm-section-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 56px; gap: 24px; flex-wrap: wrap; }
+      .bm-kicker { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mint); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600; margin-bottom: 14px; }
+      .bm-section-title { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.02em; max-width: 640px; }
+      .bm-section-desc { color: var(--mute); max-width: 380px; font-size: 15px; line-height: 1.6; }
+      .bm-reveal { opacity: 0; transform: translateY(36px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+      .bm-reveal.in { opacity: 1; transform: translateY(0); }
+
+      /* ---------- tilt wrapper ---------- */
+      .bm-tilt { transition: transform .15s ease-out; transform-style: preserve-3d; will-change: transform; }
+
+      /* ---------- map section ---------- */
+      .bm-map-wrap { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; min-height: 560px; }
+      .bm-map-canvas { position: relative; background: var(--bg2); overflow: hidden; }
+      .bm-map-grid { position: absolute; inset: 0; background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 40px 40px; opacity: 0.6; }
+      .bm-map-controls { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 5; }
+      .bm-map-ctrl-btn { width: 36px; height: 36px; border-radius: 10px; background: rgba(5,7,11,0.8); border: 1px solid var(--line); color: var(--ink); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; cursor: none; backdrop-filter: blur(8px); transition: border-color .2s; }
+      .bm-map-ctrl-btn:hover { border-color: var(--mint); color: var(--mint); }
+      .bm-map-hud { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 10px; z-index: 5; }
+      .bm-hud-chip { display: flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px; background: rgba(5,7,11,0.75); border: 1px solid var(--line); font-size: 11px; color: var(--mute); backdrop-filter: blur(8px); }
+      .bm-map-marker { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 4px var(--mint-dim); animation: bm-pulse 2s ease-in-out infinite; }
+      .bm-map-marker.violet { background: var(--violet); box-shadow: 0 0 0 4px var(--violet-dim); animation-delay: .4s; }
+      .bm-map-marker.amber { background: var(--amber); box-shadow: 0 0 0 4px #ff8a4c33; animation-delay: .8s; }
+      .bm-sidebar { background: var(--bg2); padding: 22px; display: flex; flex-direction: column; }
+      .bm-sidebar-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mute); font-weight: 600; margin-bottom: 16px; }
+      .bm-route-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: none; transition: border-color .2s, background .2s, transform .2s; background: rgba(255,255,255,0.015); }
+      .bm-route-card:hover { border-color: var(--mint); background: rgba(0,230,168,0.05); transform: translateX(4px); }
+      .bm-route-card.active { border-color: var(--mint); background: rgba(0,230,168,0.07); }
+      .bm-route-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+      .bm-route-card-name { font-weight: 600; font-size: 14px; }
+      .bm-route-card-meta { display: flex; gap: 12px; font-size: 11px; color: var(--mute); }
+      .bm-route-card-meta span { display: flex; align-items: center; gap: 4px; }
+      .bm-diff-badge { font-size: 10px; padding: 3px 8px; border-radius: 100px; font-weight: 600; }
+      .bm-diff-easy { background: #00e6a822; color: var(--mint); }
+      .bm-diff-med { background: #ff8a4c22; color: var(--amber); }
+      .bm-diff-hard { background: #ff5c5c22; color: #ff5c5c; }
+
+      /* ---------- dashboard ---------- */
+      .bm-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; margin-bottom: 24px; }
+      .bm-stat-cell { background: var(--bg2); padding: 26px 24px; }
+      .bm-stat-cell .icon-wrap { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: rgba(0,230,168,0.08); color: var(--mint); margin-bottom: 18px; }
+      .bm-stat-cell .icon-wrap.violet { background: var(--violet-dim); color: var(--violet); }
+      .bm-stat-cell .icon-wrap.amber { background: #ff8a4c22; color: var(--amber); }
+      .bm-stat-label { font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; font-weight: 600; }
+      .bm-stat-value { font-size: 30px; font-weight: 700; }
+      .bm-stat-value small { font-size: 14px; color: var(--mute); font-weight: 500; margin-left: 2px; }
+      .bm-chart-panel { background: var(--bg2); border: 1px solid var(--line); border-radius: 20px; padding: 28px; margin-bottom: 24px; }
+      .bm-chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+      .bm-compare-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--mint); background: rgba(0,230,168,0.08); padding: 6px 12px; border-radius: 100px; }
+
+      /* ---------- achievements ---------- */
+      .bm-medal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+      .bm-medal { background: var(--bg2); border: 1px solid var(--line); border-radius: 18px; padding: 24px; position: relative; overflow: hidden; cursor: none; }
+      .bm-medal.locked { opacity: 0.45; filter: grayscale(0.6); }
+      .bm-medal-badge { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: linear-gradient(145deg, #12261f, #0b0f16); border: 1px solid var(--mint-dim); margin-bottom: 16px; box-shadow: 0 0 26px var(--mint-dim), inset 0 1px 0 rgba(255,255,255,0.06); color: var(--mint); }
+      .bm-medal-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+      .bm-medal-desc { font-size: 12px; color: var(--mute); margin-bottom: 14px; }
+      .bm-progress-track { height: 4px; border-radius: 100px; background: var(--line); overflow: hidden; margin-bottom: 6px; }
+      .bm-progress-fill { height: 100%; background: linear-gradient(90deg, var(--mint), #00a97a); border-radius: 100px; transition: width 1.2s cubic-bezier(.2,.7,.2,1); }
+      .bm-progress-pct { font-size: 11px; color: var(--mute); font-family: 'JetBrains Mono', monospace; }
+
+      /* ---------- community ---------- */
+      .bm-feed { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
+      .bm-feed-card { background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 18px; cursor: none; }
+      .bm-feed-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+      .bm-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, var(--violet), #4a3fd6); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+      .bm-feed-name { font-weight: 600; font-size: 14px; }
+      .bm-feed-time { font-size: 11px; color: var(--mute); }
+      .bm-feed-map { height: 120px; border-radius: 10px; background: var(--bg3); position: relative; overflow: hidden; margin-bottom: 12px; border: 1px solid var(--line); }
+      .bm-feed-stats { display: flex; gap: 18px; margin-bottom: 12px; }
+      .bm-feed-stat { font-size: 12px; color: var(--mute); }
+      .bm-feed-stat b { color: var(--ink); display: block; font-size: 15px; font-weight: 700; }
+      .bm-feed-actions { display: flex; gap: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+      .bm-feed-action { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mute); cursor: none; transition: color .2s; }
+      .bm-feed-action:hover { color: var(--mint); }
+      .bm-feed-challenge { padding: 14px; background: rgba(124,108,255,0.06); border: 1px solid var(--violet-dim); border-radius: 12px; margin-bottom: 12px; }
+      .bm-feed-challenge-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--mute); margin-bottom: 10px; }
+      .bm-feed-challenge-top span:first-child { display: flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 500; }
+
+      /* ---------- sos ---------- */
+      .bm-sos-panel { display: grid; grid-template-columns: 220px 1fr; gap: 40px; align-items: center; background: linear-gradient(135deg, #14100c, var(--bg2)); border: 1px solid var(--line); border-radius: 24px; padding: 44px; position: relative; z-index: 2; }
+      .bm-sos-btn { width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff8a4c, #b0421a); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 4px; box-shadow: 0 0 0 8px #ff8a4c14, 0 20px 60px rgba(255,138,76,0.25); font-weight: 700; font-size: 22px; letter-spacing: 0.05em; color: #1a0d05; animation: bm-sos-pulse 2.4s ease-in-out infinite; cursor: none; }
+      @keyframes bm-sos-pulse { 0%,100% { box-shadow: 0 0 0 8px #ff8a4c14, 0 20px 60px rgba(255,138,76,0.25);} 50% { box-shadow: 0 0 0 16px #ff8a4c22, 0 20px 70px rgba(255,138,76,0.35);} }
+      .bm-sos-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .bm-sos-status { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--mute); padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,0.015); }
+      .bm-sos-status .ok { color: var(--mint); margin-left: auto; font-size: 11px; font-weight: 700; }
+
+      /* ---------- profile ---------- */
+      .bm-profile-grid { display: grid; grid-template-columns: 340px 1fr; gap: 24px; }
+      .bm-profile-card { background: linear-gradient(160deg, #0e1a16, var(--bg2)); border: 1px solid var(--line); border-radius: 20px; padding: 28px; }
+      .bm-profile-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+      .bm-profile-avatar { width: 60px; height: 60px; border-radius: 16px; background: linear-gradient(135deg, var(--mint), #00a97a); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; color: #04140f; box-shadow: 0 0 30px var(--mint-dim); }
+      .bm-profile-level { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--mint); background: rgba(0,230,168,0.1); padding: 5px 10px; border-radius: 100px; border: 1px solid var(--mint-dim); }
+      .bm-profile-name { font-size: 22px; font-weight: 700; }
+      .bm-profile-handle { font-size: 12px; color: var(--mute); margin-bottom: 22px; }
+      .bm-profile-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+      .bm-profile-stat-label { font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+      .bm-profile-stat-value { font-size: 18px; font-weight: 700; }
+      .bm-profile-stat-value small { font-size: 11px; color: var(--mute); font-weight: 500; }
+      .bm-profile-medals { display: flex; flex-wrap: wrap; gap: 8px; }
+      .bm-mini-medal { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--amber); background: #ff8a4c14; border: 1px solid #ff8a4c33; padding: 5px 9px; border-radius: 100px; }
+      .bm-timeline { background: var(--bg2); border: 1px solid var(--line); border-radius: 20px; padding: 26px; }
+      .bm-timeline-item { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+      .bm-timeline-item:last-child { border-bottom: none; }
+      .bm-timeline-dot { width: 30px; height: 30px; min-width: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: var(--mint-dim); color: var(--mint); }
+      .bm-timeline-dot.conquista { background: #ff8a4c22; color: var(--amber); }
+      .bm-timeline-dot.desafio { background: var(--violet-dim); color: var(--violet); }
+      .bm-timeline-label { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+      .bm-timeline-meta { font-size: 11px; color: var(--mute); }
+
+      /* ---------- store ---------- */
+      .bm-store-search { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mute); border: 1px solid var(--line); border-radius: 100px; padding: 10px 16px; min-width: 220px; }
+      .bm-store-banner { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(120deg, var(--mint), #00c495); border-radius: 20px; padding: 30px 34px; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+      .bm-store-banner-title { color: #04140f; font-size: 24px; font-weight: 700; margin-top: 6px; }
+      .bm-btn-dark { background: #04140f; color: var(--mint); border-radius: 10px; padding: 11px 18px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; border: none; cursor: none; }
+      .bm-store-cats { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+      .bm-cat-pill { padding: 9px 16px; border-radius: 100px; border: 1px solid var(--line); background: transparent; color: var(--mute); font-size: 13px; cursor: none; transition: all .2s; }
+      .bm-cat-pill:hover { color: var(--ink); border-color: var(--mute-dim); }
+      .bm-cat-pill.active { background: var(--mint); color: #04140f; border-color: var(--mint); font-weight: 600; }
+      .bm-product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+      .bm-product-card { background: var(--bg2); border: 1px solid var(--line); border-radius: 18px; padding: 16px; cursor: none; }
+      .bm-product-media { height: 130px; border-radius: 12px; background: radial-gradient(circle at 30% 20%, #142235, var(--bg3)); position: relative; display: flex; align-items: center; justify-content: center; color: var(--mint); margin-bottom: 14px; overflow: hidden; transition: transform .3s ease; }
+      .bm-product-card:hover .bm-product-media { transform: scale(1.04); }
+      .bm-product-off { position: absolute; top: 10px; left: 10px; background: var(--amber); color: #200; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 6px; }
+      .bm-product-fav { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border-radius: 50%; background: rgba(5,7,11,0.7); display: flex; align-items: center; justify-content: center; color: var(--mute); }
+      .bm-product-cat { font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+      .bm-product-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+      .bm-product-rating { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--amber); margin-bottom: 10px; }
+      .bm-product-price-row { display: flex; align-items: baseline; gap: 8px; }
+      .bm-product-price { font-size: 17px; font-weight: 700; }
+      .bm-product-old { font-size: 12px; color: var(--mute); text-decoration: line-through; }
+      .bm-product-install { font-size: 11px; color: var(--mute); margin-bottom: 12px; }
+      .bm-btn-add { width: 100%; padding: 10px; border-radius: 9px; background: transparent; border: 1px solid var(--mint-dim); color: var(--mint); font-weight: 600; font-size: 12px; cursor: none; transition: background .2s; }
+      .bm-btn-add:hover { background: rgba(0,230,168,0.1); }
+
+      /* ---------- mobile bottom nav ---------- */
+      .bm-mobile-nav { display: none; }
+
+      /* ---------- footer ---------- */
+      .bm-footer { padding: 60px 32px 40px; position: relative; z-index: 2; }
+      .bm-footer-inner { max-width: 1240px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+      .bm-footer-meta { font-size: 12px; color: var(--mute-dim); font-family: 'JetBrains Mono', monospace; }
+
+      @media (max-width: 860px) {
+        .bm-nav-links { display: none; }
+        .bm-map-wrap { grid-template-columns: 1fr; }
+        .bm-stat-grid { grid-template-columns: repeat(2, 1fr); }
+        .bm-medal-grid { grid-template-columns: repeat(2, 1fr); }
+        .bm-sos-panel { grid-template-columns: 1fr; text-align: center; }
+        .bm-sos-btn { margin: 0 auto; }
+        .bm-rider-tag { display: none; }
+        .bm-profile-grid { grid-template-columns: 1fr; }
+        .bm-product-grid { grid-template-columns: repeat(2, 1fr); }
+        .bm-footer { padding-bottom: 100px; }
+        .bm-mobile-nav {
+          display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+          background: rgba(5,7,11,0.9); backdrop-filter: blur(16px); border-top: 1px solid var(--line);
+          padding: 10px 6px calc(10px + env(safe-area-inset-bottom));
+          justify-content: space-around;
+        }
+        .bm-mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--mute); text-decoration: none; font-size: 10px; padding: 4px 10px; border-radius: 10px; transition: color .2s; }
+        .bm-mobile-nav-item.active { color: var(--mint); }
+      }
+    `}</style>
+  );
+}
+
+window.__bmMounted = true;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+document.getElementById("bm-fallback").style.display = "none";
+} catch (err) {
+  window.__bmMounted = true;
+  var fb = document.getElementById("bm-fallback");
+  fb.style.display = "block";
+  fb.innerHTML = "Erro ao montar a página.<br><br>Erro: <code>" +
+    (err && err.message ? err.message : String(err)) + "</code><br><br>" +
+    "Abra o Console do navegador (F12) e me envie a mensagem completa de erro.";
+  console.error(err);
+}
+</script>
+</body>
+</html>
